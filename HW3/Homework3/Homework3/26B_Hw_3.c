@@ -21,7 +21,7 @@ Homework #3:
 typedef struct record RECORD;
 struct record
 {
-	char id[4];
+	char id[5];
 	char name[20];
 	int  qty;
 };
@@ -29,13 +29,16 @@ struct record
 long hash(char *key, int size);
 FILE *create_hash_file(char *filename);
 void insert_record(RECORD *tempRecord, long hashedId, FILE *fp);
+void search_record(char *id, long hash, FILE *fp);
 
 int main(int argc, char *argv[])
 {
 	FILE *fp;
+	FILE *hashFile;
 	char line[100];
 	RECORD tempRecord;
 	long hashedId;
+	char temp[100];
 
 	if (argc > 1)
 	{
@@ -62,17 +65,23 @@ int main(int argc, char *argv[])
 	printf("Enter the name of the file to hash to: ");
 	fgets(line, sizeof(line), stdin);
 	*(line + strlen(line) - 1) = '\0';
-	create_hash_file(line);
+	hashFile = create_hash_file(line);
 
 	while (fgets(line, sizeof(line), fp))
 	{
-		strcpy(tempRecord.id, strtok(line, ','));
-		strcpy(tempRecord.name, strtok(NULL, ':'));
-		tempRecord.qty = strtoi(strtok(NULL, '\n'));
+		strcpy(tempRecord.id, strtok(line, ","));
+		strcpy(tempRecord.name, strtok(NULL, ":"));
+		tempRecord.qty = (int)strtol(strtok(NULL, "\n"), NULL, 10);
 		hashedId = hash(tempRecord.id, TABSIZE);
-		insert_record(&tempRecord, hashedId, fp);
+		insert_record(&tempRecord, hashedId, hashFile);
 	}
 	fclose(fp);
+	printf("Enter the id to search for: ");
+	fgets(line, sizeof(line), stdin);
+	*(line + strlen(line) - 1) = '\0';
+	hashedId = hash(line, TABSIZE);
+	search_record(line, hashedId, hashFile);
+	fclose(hashFile);
 	system("pause");
 
 	return 0;
@@ -94,7 +103,7 @@ long hash(char *key, int size)
 FILE *create_hash_file(char *filename)
 {
 	FILE *fp;
-	RECORD hashtable[TABSIZE][BUCKETSIZE];
+	RECORD hashtable[TABSIZE][BUCKETSIZE] = { "", "", 0 };
 	if ((fp = fopen(filename, "w+b")) == NULL)
 	{
 		printf("Could not open file %s. Aborting!\n", filename);
@@ -127,9 +136,34 @@ void insert_record(RECORD *tempRecord, long hashedId, FILE *fp)
 		{
 			fseek(fp, -1 * sizeof(RECORD), SEEK_CUR);
 			fwrite(tempRecord, sizeof(RECORD), 1, fp);
+			fseek(fp, -1 * sizeof(RECORD), SEEK_CUR);
+			fread(&detect, sizeof(RECORD), 1, fp);
 			return;
 		}
 	}
 	printf("Hash table overflow! Abort!\n");
 	exit(5);
+}
+
+void search_record(char *id, long hash, FILE *fp)
+{
+	RECORD detect;
+	int i;
+
+	if (fseek(fp, hash * BUCKETSIZE * sizeof(RECORD), SEEK_SET) != 0)
+	{
+		printf("Fatal seek error! Abort!\n");
+		exit(4);
+	}
+	for (i = 0; i < BUCKETSIZE; i++)
+	{
+		fread(&detect, sizeof(RECORD), 1, fp);
+		if (strcmp(detect.id, id) == 0)
+		{
+			printf("You found %s at hash bucket %ld:\nID: %s\nNAME: %s\nQTY: %d", id, hash, detect.id, detect.name, detect.qty);
+			return;
+		}
+	}
+	printf("Unable to find %s in the hash table.\n", id);
+	return;
 }
