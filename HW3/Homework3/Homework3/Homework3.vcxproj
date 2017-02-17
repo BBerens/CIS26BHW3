@@ -110,6 +110,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <Text Include="hardware_db.txt" />
     <Text Include="input.txt" />
   </ItemGroup>
   <ItemGroup>
