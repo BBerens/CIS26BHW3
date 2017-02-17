@@ -17,6 +17,7 @@ Homework #3:
 #define DEFAULT_FILE "hardware_db.txt"
 #define TABSIZE 40
 #define BUCKETSIZE 3
+#define DIGITS "1234567890"
 
 typedef struct record RECORD;
 struct record
@@ -59,7 +60,6 @@ int main(int argc, char *argv[])
 			printf("Could not open default file %s.\n", DEFAULT_FILE);
 			exit(1);
 		}
-		else printf("opened default file %s", DEFAULT_FILE);
 	}
 
 	printf("Enter the name of the file to hash to: ");
@@ -86,6 +86,7 @@ int main(int argc, char *argv[])
 
 	return 0;
 }
+
 /*******************************************************
 Hash formula is the same as used in Chapter 3
 */
@@ -116,7 +117,6 @@ FILE *create_hash_file(char *filename)
 	}
 	rewind(fp);
 	return fp;
-
 }
 
 void insert_record(RECORD *tempRecord, long hashedId, FILE *fp)
@@ -136,8 +136,6 @@ void insert_record(RECORD *tempRecord, long hashedId, FILE *fp)
 		{
 			fseek(fp, -1 * sizeof(RECORD), SEEK_CUR);
 			fwrite(tempRecord, sizeof(RECORD), 1, fp);
-			fseek(fp, -1 * sizeof(RECORD), SEEK_CUR);
-			fread(&detect, sizeof(RECORD), 1, fp);
 			return;
 		}
 	}
@@ -165,5 +163,22 @@ void search_record(char *id, long hash, FILE *fp)
 		}
 	}
 	printf("Unable to find %s in the hash table.\n", id);
-	return;
+	return
+}
+
+void addUserInput(FILE *fp)
+{
+	char line[100];
+	int error;
+	char tempName[100];
+
+	printf("Enter the record to be added to the database in the format:\n ID,NAME:QUANTITY\n Example: 1238,WELDING TORCH:18\n Enter 'QUIT' to stop record entry: ");
+	while (error = 0, strcmp(fgets(line, sizeof(line), stdin), "QUIT\n"))
+	{
+		strcpy(tempName, strtok(line, ","));
+		if (strlen(line) != 4) error = 2;
+		if (strspn(line, DIGITS) != 4) error = 3;
+
+
+	}
 }
