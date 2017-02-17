@@ -14,10 +14,13 @@ Homework #3:
 #include <string.h>
 #include <stdlib.h>
 
-#define DEFAULT_FILE "hardware_db.txt"
+#define DEFAULT_FILE "input.txt"
 #define TABSIZE 40
 #define BUCKETSIZE 3
 #define DIGITS "1234567890"
+#define NAME_CHARS "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ\040()"
+#define HASHFILE "hashtable.bin"
+#define NUM_ERRORS 10
 
 typedef struct record RECORD;
 struct record
@@ -31,22 +34,24 @@ long hash(char *key, int size);
 FILE *create_hash_file(char *filename);
 void insert_record(RECORD *tempRecord, long hashedId, FILE *fp);
 void search_record(char *id, long hash, FILE *fp);
+void addUserInput(FILE *fp);
+void errorReporter(int error);
+void formatName(char* str);
 
 int main(int argc, char *argv[])
 {
-	FILE *fp;
+	FILE *inputFile;
 	FILE *hashFile;
 	char line[100];
 	RECORD tempRecord;
 	long hashedId;
-	char temp[100];
 
 	if (argc > 1)
 	{
-		if ((fp = fopen(argv[1], "r+b")) == NULL)
+		if ((inputFile = fopen(argv[1], "r+b")) == NULL)
 		{
 			printf("Could not open %s.\n", argv[1]);
-			if ((fp = fopen(DEFAULT_FILE, "r+b")) == NULL)
+			if ((inputFile = fopen(DEFAULT_FILE, "r+b")) == NULL)
 			{
 				printf("Could not open default file %s.\n", DEFAULT_FILE);
 				exit(1);
@@ -55,19 +60,15 @@ int main(int argc, char *argv[])
 	}
 	else
 	{
-		if ((fp = fopen(DEFAULT_FILE, "r+b")) == NULL)
+		if ((inputFile = fopen(DEFAULT_FILE, "r+b")) == NULL)
 		{
 			printf("Could not open default file %s.\n", DEFAULT_FILE);
 			exit(1);
 		}
 	}
+	hashFile = create_hash_file(HASHFILE);
 
-	printf("Enter the name of the file to hash to: ");
-	fgets(line, sizeof(line), stdin);
-	*(line + strlen(line) - 1) = '\0';
-	hashFile = create_hash_file(line);
-
-	while (fgets(line, sizeof(line), fp))
+	while (fgets(line, sizeof(line), inputFile))
 	{
 		strcpy(tempRecord.id, strtok(line, ","));
 		strcpy(tempRecord.name, strtok(NULL, ":"));
@@ -75,12 +76,21 @@ int main(int argc, char *argv[])
 		hashedId = hash(tempRecord.id, TABSIZE);
 		insert_record(&tempRecord, hashedId, hashFile);
 	}
-	fclose(fp);
+	fclose(inputFile);
 	printf("Enter the id to search for: ");
 	fgets(line, sizeof(line), stdin);
 	*(line + strlen(line) - 1) = '\0';
 	hashedId = hash(line, TABSIZE);
 	search_record(line, hashedId, hashFile);
+	
+	addUserInput(hashFile);
+
+	printf("Enter the id to search for: ");
+	fgets(line, sizeof(line), stdin);
+	*(line + strlen(line) - 1) = '\0';
+	hashedId = hash(line, TABSIZE);
+	search_record(line, hashedId, hashFile);
+
 	fclose(hashFile);
 	system("pause");
 
@@ -134,7 +144,7 @@ void insert_record(RECORD *tempRecord, long hashedId, FILE *fp)
 		fread(&detect, sizeof(RECORD), 1, fp);
 		if (*detect.id == '\0')
 		{
-			fseek(fp, -1 * sizeof(RECORD), SEEK_CUR);
+			fseek(fp, -1 * (long)sizeof(RECORD), SEEK_CUR);
 			fwrite(tempRecord, sizeof(RECORD), 1, fp);
 			return;
 		}
@@ -158,27 +168,77 @@ void search_record(char *id, long hash, FILE *fp)
 		fread(&detect, sizeof(RECORD), 1, fp);
 		if (strcmp(detect.id, id) == 0)
 		{
-			printf("You found %s at hash bucket %ld:\nID: %s\nNAME: %s\nQTY: %d", id, hash, detect.id, detect.name, detect.qty);
+			printf("You found %s at hash bucket %ld:\nID: %s\nNAME: %s\nQTY: %d\n", id, hash, detect.id, detect.name, detect.qty);
 			return;
 		}
 	}
 	printf("Unable to find %s in the hash table.\n", id);
-	return
+	return;
 }
 
 void addUserInput(FILE *fp)
 {
 	char line[100];
-	int error;
-	char tempName[100];
+	long hashedId;
+	char *tempID, *tempName, *tempQty, *tokPos;
+	RECORD tempRecord;
+	long errorFlags;
 
-	printf("Enter the record to be added to the database in the format:\n ID,NAME:QUANTITY\n Example: 1238,WELDING TORCH:18\n Enter 'QUIT' to stop record entry: ");
-	while (error = 0, strcmp(fgets(line, sizeof(line), stdin), "QUIT\n"))
+
+	printf("Enter the record to be added to the database in the format:\nID,NAME:QUANTITY\nExample: 1238,WELDING TORCH:18\nEnter 'QUIT' to stop record entry: ");
+	while (errorFlags = 0, strcmp(fgets(line, sizeof(line), stdin), "QUIT\n"))
 	{
-		strcpy(tempName, strtok(line, ","));
-		if (strlen(line) != 4) error = 2;
-		if (strspn(line, DIGITS) != 4) error = 3;
+		if ((tempID = strtok(line, ",")) == 0) errorFlags += 1;
+		tempName = line + strlen(tempID) + 1;						// hold address of next char after token
+		tempID = strtok(tempID, "\040\t");							// removes leading and trailing whitespace
+		if (strspn(tempID, DIGITS) != strlen(tempID)) errorFlags += 2;
+		if (strlen(tempID) > 4) errorFlags += 4;
+			
+		tempName = strtok(tempName, ":"); 
+		formatName(tempName);
+		if (strlen(tempName) > 20) errorFlags += 16;
+		if (strspn(tempName, NAME_CHARS) != strlen(tempName)) errorFlags += 32;
+		
+		strcpy(tempQty, strtok(NULL, "\040\t\n"));					// removes whitespace
+		if (strspn(tempQty, DIGITS) != strlen(tempQty)) errorFlags += 64;
 
-
+		if (errorFlags)
+			errorReporter(errorFlags);
+		else
+		{
+			strcpy(tempRecord.id, tempID);
+			strcpy(tempRecord.name, tempName);
+			tempRecord.qty = (int)strtol(tempQty, NULL, 10);
+			hashedId = hash(tempRecord.id, TABSIZE);
+			insert_record(&tempRecord, hashedId, fp);
+		}
+		printf("Added record.\nEnter the record to be added to the database in the format : \nID, NAME:QUANTITY\nExample : 1238, WELDING TORCH : 18\nEnter 'QUIT' to stop record entry :");
 	}
+}
+
+void errorReporter(int error)
+{
+	if (error & 1) printf("Missing ',' delimiter between Id and Name. Unable to parse the entry.\n");
+	if (error & 2) printf("Id is too long. Id's must be in the range 0-9999.\n");
+	if (error & 4) printf("Id contains a non-numerical character.\n");
+	if (error & 8) printf("Missing ':' delimiter between Name and Quantity. Unable to parse the entry.\n");
+	if (error & 16) printf("Name is too long. Name must be a maximum of 20 chars.\n");
+	if (error & 32) printf("Name contains invalid characters. Valid names can consist only of letters, spaces and ().\n");
+	if (error & 64) printf("Quantity contains a non-numerical character.\n");
+
+	return;
+}
+
+void formatName(char* str) {
+	char *cur, *walk;
+	cur = walk = str;
+	while (*walk)
+	{
+		if (!isspace(*walk) || (cur != str && !isspace(*(walk-1))))
+			*cur++ = toupper(*walk);
+		walk++;
+	}
+	if (*(cur - 1) == ' ') *(cur - 1) = '\0';
+	else *cur = '\0';
+	return;
 }
